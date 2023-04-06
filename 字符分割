@@ -1,0 +1,207 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def chkBg_color(img):    
+    # 设定阈值
+    lower_blue = np.array([100, 43, 46])
+    upper_blue = np.array([124, 255, 255])
+    lower_yellow = np.array([26, 43, 46])
+    upper_yellow = np.array([34, 255, 255])
+    lower_green = np.array([35, 43, 46])
+    upper_green = np.array([77, 255, 255])
+    lower_white = np.array([0, 0, 221])
+    upper_white = np.array([180,30, 255])
+    # 转换为HSV
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    
+    # 根据阈值构建掩膜
+    mask_blue = cv2.inRange(hsv, lower_blue, upper_blue)/255
+    mask_yellow = cv2.inRange(hsv, lower_yellow, upper_yellow)/255 #
+    mask_green = cv2.inRange(hsv, lower_green, upper_green)/255  #
+    mask_white = cv2.inRange(hsv, lower_white, upper_white)/255  #
+        
+    # 显示图像
+    #cv2.imshow('mask_blue', mask_blue)
+    #cv2.imshow('mask_white', mask_white)
+    #cv2.imshow('mask_green', mask_green)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+    # 对mask进行操作--黑白像素点统计  因为不同颜色的掩膜面积不一样
+    # 记录黑白像素总和 
+    blue = np.sum(np.sum(mask_blue))
+    yellow = np.sum(np.sum(mask_yellow))
+    green = np.sum(np.sum(mask_green))
+    white = np.sum(np.sum(mask_white))
+        
+    color_list = [1,2,3,4]
+    num_list = [blue,yellow,green,white]
+    
+    #print('color:',color_list[num_list.index(max(num_list))])
+    return color_list[num_list.index(max(num_list))]
+
+def removBoard(img,bod):
+    h,w = img.shape
+    img[:,0:bod[0]]=0
+    img[:,w-bod[1]:w]=0   #去除右边框
+    
+    img[0:bod[2],:]=0
+    img[h-bod[3]:h,:]=0
+    return img
+    
+
+def chkPos(pos,bg,isdouble):
+    if(bg == 3):
+        plen = 8
+    else:
+        plen = 7
+    if bg == 4:
+        isdouble = 2
+        
+    i = len(pos) - plen - 1
+    if isdouble == 1:
+        if i == 0:
+            del pos[2]
+        if i == 1:
+            pos[0][2] = pos[1][2]
+            del pos[3]
+            del pos[1]
+        if i == 2:
+            pos[0][2] = pos[2][2]
+            del pos[4]
+            del pos[2]
+            del pos[1]
+     
+    if isdouble == 2:
+        if i == 0:
+            del pos[1]
+        if i == 1:
+            pos[0][2] = pos[1][2]
+            del pos[2]
+            del pos[1]
+        if i == 2:
+            pos[0][2] = pos[2][2]                                                                                                                                                                                                        
+            del pos[3]
+            del pos[2]
+            del pos[1]
+    
+    return pos
+  
+def showimg(img):
+    plt.imshow(img,cmap=plt.gray())  
+    plt.show()
+    return
+    
+def GetCharacter(img,pos,rowstart,rowend):
+    h,w=img.shape #返回高和宽
+    image=255*np.ones([h,w])
+    
+    Vertical = np.sum(img,0,dtype=np.int32)  #按列求和
+    bstart = 0
+    bend = 0
+    b_Start = 0
+    b_End = 0
+    for j in range(len(Vertical)):
+        if Vertical[j] > 0 and bstart ==0:
+            b_Start =j
+            bstart = 1
+            bend=0
+        if Vertical[j] <= 0 and bstart == 1:
+            b_End =j
+            bstart = 0
+            bend=1
+        if bend == 1:
+            pos.append([b_Start,rowstart,b_End,rowend])
+            bend =0
+    for j in range(0,w): #垂直投影
+        image[h-Vertical[j]:h,j]=0
+    return pos,image    
+    
+        
+def CP_Process(fm):
+    image1=cv2.imread(fm)
+    #识别车牌颜色
+    
+    image1_1= cv2.cvtColor(image1,cv2.COLOR_BGR2RGB)
+    showimg(image1_1)
+    bgtype = chkBg_color(image1)
+    
+    #灰度化处理
+    image1_1=cv2.cvtColor(image1,cv2.COLOR_BGR2GRAY)
+    showimg(image1_1)
+    #图像二值化
+    ret,image2 = cv2.threshold(image1_1, 135, 255, cv2.THRESH_BINARY)
+    showimg(image2)
+    #图像取反 2黄  3绿 4白
+    if bgtype != 1:
+        image2 = 255 - image2
+        image1_1 = 255 - image1_1
+ 
+    #cv2.imwrite('gray.jpg', image1_1)
+    
+    showimg(image2)  
+    #水平投影
+    h,w=image2.shape #返回高和宽
+    image3=255*np.ones([h,w])
+    
+    #记录每一行的波峰
+    if (bgtype == 1 or bgtype == 3 or bgtype == 4):
+        image2 = removBoard(image2,[8,8,18,19])
+    if bgtype == 2:
+        image2 = removBoard(image2,[8,8,8,8])
+        
+    #cv2.imshow('image2',image2)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+    
+    image2 = image2 / 255;
+    
+    horizontal = np.sum(image2,1,dtype=np.int32)  #按行求和  计算水平投影
+      
+    #显示水平投影图           
+    for j in range(0,h): 
+        image3[j,0:horizontal[j]]=0         
+    #plt.imshow(image3,cmap=plt.gray())#灰度图正确的表示方法
+    #plt.show()
+    showimg(image3)  
+                 
+     
+    #分割字符
+    Position = []
+    start = 0
+    a_Start = []
+    a_End = []
+     
+    #根据水平投影获取水平分割位置
+    for i in range(len(horizontal)):
+        if horizontal[i] > 0 and start ==0:
+            a_Start.append(i)
+            start = 1
+        if horizontal[i] <= 0 and start == 1:
+            a_End.append(i)
+            start = 0
+     
+    #分割行，分割之后再进行列分割并保存分割位置
+    for i in range(len(a_Start)):
+        #获取行图像
+        cropImg = image2[a_Start[i]:a_End[i], 0:w]
+        Position,image4 = GetCharacter(cropImg,Position,a_Start[i],a_End[i])
+        showimg(image4)  
+        #plt.imshow(image4,cmap=plt.gray())#灰度图正确的表示方法
+        #plt.show()
+     
+    Position = chkPos(Position,bgtype,len(a_Start))
+    n=0
+    img=[]
+    for m in range(len(Position)):
+        n+=1
+        #cv2.rectangle(image1_1, (Position[m][0],Position[m][1]), (Position[m][2],Position[m][3]), (0, 0, 255), 1)#第一个参数是原图；第二个参数是矩阵的左上点坐标；第三个参数是矩阵的右下点坐标；第四个参数是画线对应的rgb颜色；第五个参数是所画的线的宽度
+        char_img = image1_1[Position[m][1]-3:Position[m][3]+3,Position[m][0]-3:Position[m][2]+3]
+        char_img = cv2.resize(char_img, [32,40])
+        img.append(char_img)
+    return img
+
+if __name__ == '__main__':
+    img = CP_Process('D:\\chinese_license_plate_generator-master\\multi_val\\chuanTF8WAM_yellow_False.jpg')
+    for i in range(len(img)):
+        cv2.imwrite('{}.bmp'.format(i), img[i])
